@@ -18,6 +18,7 @@ export const documentApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 300000, // 5 minute timeout for uploads (PDF processing takes time)
     });
     return response.data;
   },
