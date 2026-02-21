@@ -1,4 +1,7 @@
 import { useState, useCallback } from 'react';
+
+// API URL for production
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ofds.onrender.com';
 import { useDropzone } from 'react-dropzone';
 import {
   CloudArrowUpIcon,
@@ -56,7 +59,7 @@ const GuestUpload: React.FC<GuestUploadProps> = ({ onUploadComplete, isDisabled 
         setUploadProgress((prev) => Math.min(prev + 10, 90));
       }, 200);
 
-      const response = await fetch('/api/v1/trial/upload', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/trial/upload`, {
         method: 'POST',
         body: formData,
       });

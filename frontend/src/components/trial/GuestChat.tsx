@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+
+// API URL for production
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ofds.onrender.com';
 import {
   PaperAirplaneIcon,
   SparklesIcon,
@@ -88,7 +91,7 @@ Try questions like:
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/v1/trial/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/trial/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

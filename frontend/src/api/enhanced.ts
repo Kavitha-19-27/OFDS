@@ -5,9 +5,12 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
+// API URL for production
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ofds.onrender.com';
+
 // Create axios instance for v2 API
 const apiV2 = axios.create({
-  baseURL: '/api/v1/v2',  // Note: v2 is mounted under v1 router
+  baseURL: `${API_BASE_URL}/api/v1/v2`,  // Note: v2 is mounted under v1 router
   headers: {
     'Content-Type': 'application/json',
   },
