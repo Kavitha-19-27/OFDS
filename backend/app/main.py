@@ -3,22 +3,69 @@ FastAPI application entry point.
 Configures middleware, routers, and application lifecycle events.
 """
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 
 from app.core.exceptions import AppException, NotFoundError, ValidationError, AuthorizationError
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, AsyncSessionLocal
 from app.api.v1.router import api_router
+from app.models.tenant import Tenant
+from app.models.user import User, UserRole
+from app.core.security import hash_password
 from app.core.middleware import error_handler_middleware, RateLimitMiddleware, RequestLoggingMiddleware
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+async def seed_platform_tenant():
+    """Create Platform tenant and admin user if they don't exist."""
+    async with AsyncSessionLocal() as session:
+        # Check if platform tenant exists
+        result = await session.execute(
+            select(Tenant).where(Tenant.slug == "platform")
+        )
+        platform_tenant = result.scalar_one_or_none()
+        
+        if not platform_tenant:
+            platform_tenant = Tenant(
+                id=str(uuid.uuid4()),
+                name="Platform",
+                slug="platform",
+                is_active=True
+            )
+            session.add(platform_tenant)
+            await session.flush()
+            logger.info("Created Platform tenant", tenant_id=platform_tenant.id)
+        
+        # Create default admin if doesn't exist
+        result = await session.execute(
+            select(User).where(User.email == "admin@rag.com")
+        )
+        existing_admin = result.scalar_one_or_none()
+        
+        if not existing_admin:
+            admin = User(
+                id=str(uuid.uuid4()),
+                tenant_id=platform_tenant.id,
+                email="admin@rag.com",
+                hashed_password=hash_password("Admin@123"),
+                full_name="Administrator",
+                role=UserRole.ADMIN,
+                is_active=True
+            )
+            session.add(admin)
+            logger.info("Created default admin user: admin@rag.com")
+        
+        await session.commit()
 
 
 @asynccontextmanager
@@ -39,6 +86,10 @@ async def lifespan(app: FastAPI):
     # Initialize database tables
     await init_db()
     logger.info("Database initialized")
+    
+    # Seed platform tenant and admin
+    await seed_platform_tenant()
+    logger.info("Platform tenant seeded")
     
     # Create data directories
     data_dirs = [
