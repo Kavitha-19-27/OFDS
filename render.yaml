@@ -7,7 +7,7 @@ services:
   - type: web
     name: rag-saas-backend
     runtime: python
-    region: oregon
+    region: ohio  # Closest to Neon US East 1
     plan: free
     branch: main
     rootDir: backend
@@ -42,7 +42,7 @@ services:
   - type: web
     name: rag-saas-frontend
     runtime: static
-    region: oregon
+    region: ohio  # Same region as backend
     branch: main
     rootDir: frontend
     buildCommand: npm ci && npm run build
