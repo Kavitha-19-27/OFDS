@@ -1,8 +1,8 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
-// Get API URL from environment or use relative path for same-origin
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// Get API URL from environment or use production URL as fallback
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ofds.onrender.com';
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
