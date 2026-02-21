@@ -157,6 +157,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.requests = {}  # {ip: [(timestamp, ...), ...]}
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Skip rate limiting for CORS preflight requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        
         client_ip = get_remote_address(request)
         current_time = time.time()
         window_start = current_time - 60  # 1 minute window

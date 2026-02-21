@@ -83,6 +83,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting application", environment=settings.app_env)
     
+    # Log CORS configuration for debugging
+    logger.info("CORS origins configured", origins=settings.cors_origins_list)
+    
     # Initialize database tables
     await init_db()
     logger.info("Database initialized")
@@ -149,20 +152,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add custom middleware - order matters!
+# In FastAPI/Starlette, middleware is processed in REVERSE order (last added = first executed)
+# So we add CORS LAST to ensure it runs FIRST and handles preflight requests
 
-# Add custom middleware (order matters - first added = outermost)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=settings.rate_limit_per_minute
+)
+
+# CORS must be added LAST so it runs FIRST (handles OPTIONS preflight before other middleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Response-Time"],
 )
 
 # Include API router
