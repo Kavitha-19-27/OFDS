@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+*.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Data files (don't push to git)
+data/uploads/*
+data/faiss_indexes/*
+!data/uploads/.gitkeep
+!data/faiss_indexes/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/

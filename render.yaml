@@ -1,0 +1,71 @@
+# Render.com configuration for RAG SaaS
+# https://render.com/docs/yaml-spec
+
+databases:
+  - name: rag-saas-db
+    plan: free
+    region: oregon
+    databaseName: ragsaas
+    user: ragsaas
+
+services:
+  # Backend API Service
+  - type: web
+    name: rag-saas-backend
+    runtime: python
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: python -m app.startup && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rag-saas-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: APP_ENV
+        value: production
+      - key: USE_LOCAL_EMBEDDINGS
+        value: "true"
+      - key: LLM_PROVIDER
+        value: groq
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: INFO
+
+  # Frontend Static Site
+  - type: web
+    name: rag-saas-frontend
+    runtime: static
+    region: oregon
+    branch: main
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false
