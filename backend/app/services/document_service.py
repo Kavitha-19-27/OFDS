@@ -4,6 +4,7 @@ Orchestrates PDF processing, chunking, and embedding generation.
 """
 import os
 import uuid
+import asyncio
 import aiofiles
 from typing import List, Optional
 from datetime import datetime
@@ -138,38 +139,69 @@ class DocumentService:
             size=len(content)
         )
         
-        # Process document asynchronously
-        try:
-            await self._process_document(document, file_path)
-        except Exception as e:
-            logger.exception("Document processing failed", document_id=document.id)
-            await self.document_repo.update_status(
-                document.id,
-                DocumentStatus.FAILED,
-                error_message=str(e)
-            )
+        # Commit the document record immediately
+        await self.session.commit()
         
-        # Refresh document status
-        document = await self.document_repo.get_by_id(document.id)
+        # Schedule background processing (fire-and-forget)
+        # This allows the upload to return quickly within Render's 30s timeout
+        asyncio.create_task(
+            self._process_document_background(document.id, file_path)
+        )
         
         return DocumentUploadResponse(
             id=document.id,
             filename=document.filename,
             original_name=document.original_name,
-            status=document.status,
-            message="Document uploaded and processed" if document.status == DocumentStatus.COMPLETED else "Document uploaded, processing..."
+            status=DocumentStatus.PENDING,
+            message="Document uploaded. Processing in background..."
         )
     
-    async def _process_document(self, document: Document, file_path: str) -> None:
+    async def _process_document_background(self, document_id: str, file_path: str) -> None:
         """
-        Process a document: extract text, chunk, embed, and index.
+        Process document in background with its own database session.
+        This runs after the upload request has already returned.
+        """
+        from app.database import AsyncSessionLocal
         
-        Args:
-            document: Document record
-            file_path: Path to the PDF file
-        """
+        try:
+            async with AsyncSessionLocal() as session:
+                # Create new service instances with fresh session
+                doc_repo = DocumentRepository(session)
+                chunk_repo = DocumentChunkRepository(session)
+                
+                document = await doc_repo.get_by_id(document_id)
+                if not document:
+                    logger.error("Document not found for background processing", document_id=document_id)
+                    return
+                
+                try:
+                    # Process the document
+                    await self._process_document_with_repos(document, file_path, doc_repo, chunk_repo, session)
+                    await session.commit()
+                except Exception as e:
+                    logger.exception("Background document processing failed", document_id=document_id)
+                    await session.rollback()
+                    await doc_repo.update_status(
+                        document_id,
+                        DocumentStatus.FAILED,
+                        error_message=str(e)
+                    )
+                    await session.commit()
+        except Exception as e:
+            logger.exception("Background processing session error", document_id=document_id, error=str(e))
+    
+    async def _process_document_with_repos(
+        self, 
+        document: Document, 
+        file_path: str,
+        doc_repo: DocumentRepository,
+        chunk_repo: DocumentChunkRepository,
+        session: AsyncSession
+    ) -> None:
+        """Process document using provided repositories."""
         # Mark as processing
-        await self.document_repo.update_status(document.id, DocumentStatus.PROCESSING)
+        await doc_repo.update_status(document.id, DocumentStatus.PROCESSING)
+        await session.commit()
         
         # Extract text
         logger.info("Extracting text", document_id=document.id)
@@ -212,7 +244,7 @@ class DocumentService:
         logger.info("Storing chunks", document_id=document.id)
         chunk_records = []
         for chunk in chunks:
-            chunk_record = await self.chunk_repo.create(
+            chunk_record = await chunk_repo.create(
                 document_id=document.id,
                 tenant_id=document.tenant_id,
                 chunk_index=chunk.index,
@@ -234,10 +266,10 @@ class DocumentService:
         # Update chunks with embedding IDs
         for chunk_record, embedding_id in zip(chunk_records, embedding_ids):
             chunk_record.embedding_id = embedding_id
-        await self.session.flush()
+        await session.flush()
         
         # Mark as completed
-        await self.document_repo.update_status(
+        await doc_repo.update_status(
             document.id,
             DocumentStatus.COMPLETED,
             page_count=extraction_result.total_pages,
@@ -310,7 +342,7 @@ class DocumentService:
                 await self.session.delete(chunk)
             await self.session.flush()
         
-        # Get file path
+        # Reprocess the document using background processing
         file_path = os.path.join(settings.upload_path, document.filename)
         
         if not os.path.exists(file_path):
@@ -321,16 +353,10 @@ class DocumentService:
             )
             return await self.get_document(document_id, tenant_id)
         
-        # Reprocess the document
-        try:
-            await self._process_document(document, file_path)
-        except Exception as e:
-            logger.exception("Document reprocessing failed", document_id=document_id)
-            await self.document_repo.update_status(
-                document_id,
-                DocumentStatus.FAILED,
-                error_message=str(e)
-            )
+        # Schedule background reprocessing
+        asyncio.create_task(
+            self._process_document_background(document_id, file_path)
+        )
         
         return await self.get_document(document_id, tenant_id)
     
